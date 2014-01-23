@@ -119,15 +119,14 @@ QUERY_MAP = {
                     create_as(QUERY_3c_SQL)),
              '4':  (QUERY_4_HQL, None, None)}
 
-# Turn a given query into a version using cached tables
+# Turn a given query into a version using cached tables. Only the tables
+# that we create need to be named as X_cached; we cache the existing tables
+# using Shark's explicit "CACHE" query.
 def make_input_cached(query):
-  return query.replace("uservisits", "uservisits_cached") \
-              .replace("rankings", "rankings_cached") \
-              .replace("url_counts_partial", "url_counts_partial_cached") \
-              .replace("url_counts_total", "url_counts_total_cached") \
-              .replace("documents", "documents_cached")
+  return query.replace("url_counts_partial", "url_counts_partial_cached") \
+              .replace("url_counts_total", "url_counts_total_cached")
 
-# Turn a given query into one that creats cached tables
+# Turn a given query into one that creates cached tables
 def make_output_cached(query):
   return query.replace(TMP_TABLE, TMP_TABLE_CACHED)
 
@@ -255,11 +254,11 @@ def run_shark_benchmark(opts):
   slaves = map(str.strip, open(local_slaves_file).readlines())
 
   print "Restarting standalone scheduler..."
-  ssh_shark("/root/spark/bin/stop-all.sh")
+  ssh_shark("/root/spark/sbin/stop-all.sh")
   ensure_spark_stopped_on_slaves(slaves)
   time.sleep(30)
-  ssh_shark("/root/spark/bin/stop-all.sh")
-  ssh_shark("/root/spark/bin/start-all.sh")
+  ssh_shark("/root/spark/sbin/stop-all.sh")
+  ssh_shark("/root/spark/sbin/start-all.sh")
   time.sleep(10)
 
   # Two modes here: Shark Mem and Shark Disk. If using Shark disk clear buffer
@@ -283,15 +282,12 @@ def run_shark_benchmark(opts):
     if '4' in opts.query_num:
       # Query 4 uses entirely different tables
       query_list += """
-                    DROP TABLE IF EXISTS documents_cached;
-                    CREATE TABLE documents_cached AS SELECT * FROM documents;
+                    CACHE documents;
                     """
     else:
       query_list += """
-                    DROP TABLE IF EXISTS uservisits_cached;
-                    DROP TABLE IF EXISTS rankings_cached;
-                    CREATE TABLE uservisits_cached AS SELECT * FROM uservisits;
-                    CREATE TABLE rankings_cached AS SELECT * FROM rankings;
+                    CACHE uservisits;
+                    CACHE rankings;
                     """
 
   if '4' not in opts.query_num:
@@ -307,7 +303,7 @@ def run_shark_benchmark(opts):
     query_file.write("python /root/shark/bin/dev/clear-buffer-cache.py\n")
 
   query_file.write(
-    "%s -e '%s' > %s 2>&1\n" % (runner, query_list, remote_tmp_file))
+    "%s -skipRddReload -e '%s' > %s 2>&1\n" % (runner, query_list, remote_tmp_file))
 
   query_file.write(
       "cat %s | grep Time | grep -v INFO |grep -v MapReduce >> %s\n" % (
