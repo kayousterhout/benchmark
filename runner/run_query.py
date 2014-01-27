@@ -327,6 +327,7 @@ def run_shark_benchmark(opts):
     print "Stopping Executors on Slaves....."
     ensure_spark_stopped_on_slaves(slaves)
     print "Query %s : Trial %i" % (opts.query_num, i+1)
+    print "Log output on master in ", remote_tmp_file
     ssh_shark("%s" % remote_query_file)
     local_results_file = os.path.join(LOCAL_TMP_DIR, "%s_results" % prefix)
     scp_from(opts.shark_host, opts.shark_identity_file, "root",
@@ -474,7 +475,7 @@ def ensure_spark_stopped_on_slaves(slaves):
   while not stop:
     cmd = "jps | grep ExecutorBackend"
     ret_vals = map(lambda s: ssh_ret_code(s, "root", opts.shark_identity_file, cmd), slaves)
-    print ret_vals
+    print "ExecutorBackend stopped on slaves?", ret_vals
     if 0 in ret_vals:
       print "Spark is still running on some slaves... sleeping"
       time.sleep(10)
@@ -508,7 +509,11 @@ def main():
     return ",".join([str(k) for k in lst]) 
 
   output = StringIO()
-  outfile = open('results/%s_%s_%s' % (fname, opts.query_num, datetime.datetime.now()), 'w')
+  out_filename = 'results/%s_%s/%s' % (fname, opts.query_num, datetime.datetime.now())
+  dir_name = os.path.dirname(out_filename)
+  if not os.path.exists(dir_name):
+    os.makedirs(dir_name)
+  outfile = open(out_filename, 'w')
 
   print >> output, "=================================="
   print >> output, "Results: %s" % prettylist(results)
