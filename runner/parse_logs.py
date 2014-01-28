@@ -9,6 +9,13 @@ class Simulation:
     self.runtime = 0
     self.runtime_without_fetch = 0
 
+    if len(tasks) < 200:
+      # Print details about tasks for hand simulation.
+      for i, t in enumerate(tasks):
+        print str(t)
+        if i % 40 == 0:
+          print "***40***"
+
     if len(tasks) < 40:
       self.runtime = max([t.runtime() for t in tasks])
       self.runtime_without_fetch = max([t.runtime_without_fetch() for t in tasks])
@@ -16,41 +23,46 @@ class Simulation:
     else:
       # Make a copy of tasks to pass to simulate, because simulate modifies the list.
       self.runtime = self.simulate(list(tasks), Task.runtime)
-      print "Runtime:", self.runtime
       self.runtime_without_fetch = self.simulate(list(tasks), Task.runtime_without_fetch)
-      print "Runtime without fetch:", self.runtime_without_fetch
 
-  def simulate(self, tasks, runtime_function):
-    print "Simulationg for %s tasks" % len(tasks)
+  def simulate(self, tasks, runtime_function, verbose=False):
     # Sorted list of task finish times.
     finish_times = []
     # Start 40 tasks.
     while len(finish_times) < 40:
       runtime = runtime_function(tasks.pop(0))
-      print "Adding task with runtime %s" % runtime
+      if verbose:
+        print "Adding task with runtime %s" % runtime
       bisect.insort_left(finish_times, runtime)
 
     while len(tasks) > 0:
+      if verbose:
+        print finish_times
       start_time = finish_times.pop(0)
       finish_time = start_time + runtime_function(tasks.pop(0))
-      print finish_times
-      print "Task starting at ", start_time, " finishing at", finish_time
+      if verbose:
+        print "Task starting at ", start_time, " finishing at", finish_time
       bisect.insort_left(finish_times, finish_time)
 
     # Job finishes when the last task is done.
     return finish_times[-1]
 
 class Task:
-  def __init__(self, start_time, fetch_wait, finish_time):
+  def __init__(self, start_time, fetch_wait, finish_time, remote_bytes_read):
     self.start_time = start_time
     self.fetch_wait = fetch_wait
     self.finish_time = finish_time
+    self.remote_mb_read = remote_bytes_read / 1048576.
 
   def runtime(self):
     return self.finish_time - self.start_time
 
   def runtime_without_fetch(self):
     return self.finish_time - self.start_time - self.fetch_wait
+
+  def __str__(self):
+    return ("Runtime %s Fetch %s (%.2fMB) Fetchless runtime %s" %
+      (self.runtime(), self.fetch_wait, self.remote_mb_read, self.runtime_without_fetch()))
 
 class Stage:
   def __init__(self):
@@ -100,6 +112,7 @@ class Stage:
     start_time = -1
     fetch_wait = -1
     finish_time = -1
+    remote_bytes_read = 0
     for pair in items:
       if pair.find("=") == -1:
         continue
@@ -110,6 +123,8 @@ class Stage:
         finish_time = int(value)
       elif key == "REMOTE_FETCH_WAIT_TIME":
         fetch_wait = int(value)
+      elif key == "REMOTE_BYTES_READ":
+        remote_bytes_read = int(value)
 
     print start_time, finish_time, fetch_wait
 
@@ -129,7 +144,7 @@ class Stage:
       self.finish_time = max(self.finish_time, finish_time)
 
     if fetch_wait != -1:
-      self.tasks.append(Task(start_time, fetch_wait, finish_time))
+      self.tasks.append(Task(start_time, fetch_wait, finish_time, remote_bytes_read))
       self.has_fetch = True
       finish_time_without_shuffle = finish_time - fetch_wait
       if self.finish_time_without_shuffle == -1:
@@ -139,7 +154,7 @@ class Stage:
           self.finish_time_without_shuffle, finish_time_without_shuffle)
       self.fetch_wait_fractions.append(fetch_wait * 1.0 / (finish_time - start_time))
     else:
-      self.tasks.append(Task(start_time, 0, finish_time))
+      self.tasks.append(Task(start_time, 0, finish_time, 0))
 
     print self
 
@@ -168,12 +183,13 @@ def main(argv):
     print "***********", id, stage
     stage_run_time = stage.finish_time - stage.start_time
     total_time += stage_run_time
-    print "Total time: ", total_time
-    print "Total runtime: ", stage.total_runtime(), "total w/o fetch:", stage.total_runtime_without_fetch()
-    print "New speedup: ", stage.total_runtime_without_fetch() * 1.0 / stage.total_runtime()
+    print "Total time: ", stage.total_runtime(), "total w/o fetch:", stage.total_runtime_without_fetch(), "Approx speedup: ", stage.total_runtime_without_fetch() * 1.0 / stage.total_runtime()
+    print ("Approximate runtime: %s, without fetch: %s, speedup: %s" %
+      (stage.approximate_runtime(), stage.approximate_runtime_without_fetch(),
+       stage.approximate_runtime_without_fetch() * 1.0 / stage.approximate_runtime()))
     if stage.has_fetch:
       time_without_shuffle = stage.finish_time_without_shuffle - stage.start_time
-      print ("Run time: %s, without shuffle: %s, Speedup: %s" %
+      print ("Real run time: %s, without shuffle (no wave accounting): %s, Speedup: %s" %
         (stage_run_time, time_without_shuffle, time_without_shuffle * 1.0 / stage_run_time))
       total_time_without_shuffle += time_without_shuffle
     else:
@@ -185,7 +201,11 @@ def main(argv):
     s = Simulation(stage.tasks)
     simulated_total_time += s.runtime
     simulated_total_time_without_shuffle += s.runtime_without_fetch
+    print ("Simulated run time: %s, simulated runtime w/o shuffle: %s, speedup: %s" %
+      (s.runtime, s.runtime_without_fetch, s.runtime_without_fetch * 1.0 / s.runtime))
 
+
+  print ("****************************************")
   speedup = total_time_without_shuffle * 1.0 / total_time
   # TODO: this overestimates the speedup, because stages can be overlapping!
   print ("Total time: %s, without shuffle: %s, speedup: %s" %
