@@ -1,6 +1,20 @@
 import bisect
 import collections
+import math
 import sys
+
+""" N should be sorted before calling this function. """
+def get_percentile(N, percent, key=lambda x:x):
+    if not N:
+        return 0
+    k = (len(N) - 1) * percent
+    f = math.floor(k)
+    c = math.ceil(k)
+    if f == c:
+        return key(N[int(k)])
+    d0 = key(N[int(f)]) * (c-k)
+    d1 = key(N[int(c)]) * (k-f)
+    return d0 + d1
 
 """ Class that replays the execution of the stage."""
 class Simulation:
@@ -8,13 +22,6 @@ class Simulation:
     self.SLOTS = 40
     self.runtime = 0
     self.runtime_without_fetch = 0
-
-    if len(tasks) < 200:
-      # Print details about tasks for hand simulation.
-      for i, t in enumerate(tasks):
-        print str(t)
-        if i % 40 == 0:
-          print "***40***"
 
     if len(tasks) < 40:
       self.runtime = max([t.runtime() for t in tasks])
@@ -25,11 +32,27 @@ class Simulation:
       self.runtime = self.simulate(list(tasks), Task.runtime)
       self.runtime_without_fetch = self.simulate(list(tasks), Task.runtime_without_fetch)
 
+    # Get the runtime without stragglers, using two different methods to account for stragglers. 
+    runtimes = [t.runtime() for t in tasks]
+    average_runtime = sum(runtimes) * 1.0 / len(tasks)
+    self.runtime_with_normalized_stragglers = self.simulate(
+      list(tasks), lambda x: average_runtime)
+
+    runtimes.sort()
+    # Drop the tasks with the highest 5% of runtimes.
+    # TODO: Should drop jobs that are stragglers w/o network??
+    tasks_without_stragglers = [t for t in tasks if t.runtime() <= get_percentile(runtimes, 0.95)]
+    self.runtime_with_no_stragglers = self.simulate(list(tasks_without_stragglers), Task.runtime)
+    self.runtime_with_no_stragglers_and_no_fetch = self.simulate(
+      list(tasks_without_stragglers), Task.runtime_without_fetch)
+
   def simulate(self, tasks, runtime_function, verbose=False):
+    tasks.sort(key = lambda x: x.start_time)
+
     # Sorted list of task finish times.
     finish_times = []
     # Start 40 tasks.
-    while len(finish_times) < 40:
+    while len(finish_times) < 40 and len(tasks) > 0:
       runtime = runtime_function(tasks.pop(0))
       if verbose:
         print "Adding task with runtime %s" % runtime
@@ -61,8 +84,9 @@ class Task:
     return self.finish_time - self.start_time - self.fetch_wait
 
   def __str__(self):
-    return ("Runtime %s Fetch %s (%.2fMB) Fetchless runtime %s" %
-      (self.runtime(), self.fetch_wait, self.remote_mb_read, self.runtime_without_fetch()))
+    return ("%s %s %s %s" % (self.start_time, self.finish_time, self.fetch_wait, self.finish_time - self.fetch_wait))
+   # return ("%s Runtime %s Fetch %s (%.2fMB) Fetchless runtime %s" %
+   #   (self.start_time, self.runtime(), self.fetch_wait, self.remote_mb_read, self.runtime_without_fetch()))
 
 class Stage:
   def __init__(self):
@@ -74,7 +98,6 @@ class Stage:
     self.has_fetch = False
     self.num_tasks = 0
     self.fetch_wait_fractions = []
-
 
   def __str__(self):
     if self.has_fetch:
@@ -126,7 +149,8 @@ class Stage:
       elif key == "REMOTE_BYTES_READ":
         remote_bytes_read = int(value)
 
-    print start_time, finish_time, fetch_wait
+    print finish_time-start_time, start_time, finish_time, fetch_wait
+    print finish_time - fetch_wait
 
     if (start_time == -1 or finish_time == -1 or
         (self.has_fetch and fetch_wait == -1)):
@@ -170,6 +194,10 @@ def main(argv):
     if stage_id_loc != -1:
       stage_id_and_suffix = line[stage_id_loc + len(STAGE_ID_MARKER):]
       stage_id = stage_id_and_suffix[:stage_id_and_suffix.find(" ")]
+      # TODO: Remove this if not running query 3b in the benchmark! This is a hack to combine two
+      # stages that run concurrently.
+      if stage_id == "8":
+        stage_id = "9"
       stages[stage_id].add_event(line)
 
   total_time = 0
@@ -179,6 +207,10 @@ def main(argv):
 
   simulated_total_time = 0
   simulated_total_time_without_shuffle = 0
+  
+  simulated_total_normalized_stragglers = 0
+  simulated_total_no_stragglers = 0
+  simulated_total_no_stragglers_without_shuffle = 0
   for id, stage in stages.iteritems():
     print "***********", id, stage
     stage_run_time = stage.finish_time - stage.start_time
@@ -204,6 +236,13 @@ def main(argv):
     print ("Simulated run time: %s, simulated runtime w/o shuffle: %s, speedup: %s" %
       (s.runtime, s.runtime_without_fetch, s.runtime_without_fetch * 1.0 / s.runtime))
 
+    print ("Simulated normalized stragglers: %s, no stragglers: %s, no stragglers or fetch: %s" %
+      (s.runtime_with_normalized_stragglers, s.runtime_with_no_stragglers,
+       s.runtime_with_no_stragglers_and_no_fetch))
+    simulated_total_normalized_stragglers += s.runtime_with_normalized_stragglers
+    simulated_total_no_stragglers += s.runtime_with_no_stragglers
+    simulated_total_no_stragglers_without_shuffle += s.runtime_with_no_stragglers_and_no_fetch
+
 
   print ("****************************************")
   speedup = total_time_without_shuffle * 1.0 / total_time
@@ -215,6 +254,13 @@ def main(argv):
     (approx_total_time, approx_total_time_without_shuffle, approx_total_time_without_shuffle * 1.0 / approx_total_time))
 
   print "Sim %s without %s speedup %s" % (simulated_total_time, simulated_total_time_without_shuffle, simulated_total_time_without_shuffle * 1.0 / simulated_total_time)
+
+  norm_stragglers_speedup = simulated_total_normalized_stragglers * 1.0 / simulated_total_time
+  no_stragglers_speedup = simulated_total_no_stragglers * 1.0 / simulated_total_time
+  no_stragglers_no_shuffle_speedup = (simulated_total_no_stragglers_without_shuffle * 1.0 /
+    simulated_total_no_stragglers)
+  print ("Speedup from normalizing stragglers: %s, no stragglers: %s, nostrag network imp: %s" %
+    (norm_stragglers_speedup, no_stragglers_speedup, no_stragglers_no_shuffle_speedup))
     
 if __name__ == "__main__":
   main(sys.argv[1:])
