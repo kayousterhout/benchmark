@@ -128,7 +128,7 @@ def make_input_cached(query):
 
 # Turn a given query into one that creates cached tables
 def make_output_cached(query):
-  return query.replace(TMP_TABLE, TMP_TABLE_CACHED)
+  return query.replace(TMP_TABLE, TMP_TABLE_CACHED + " TBLPROPERTIES('shark.cache'='memory_only')")
 
 ### Runner ###
 def parse_args():
@@ -145,7 +145,7 @@ def parse_args():
       default=False, help="Disable caching in Shark")
   parser.add_option("--impala-use-hive", action="store_true",
       default=False, help="Use Hive for query executio on Impala nodes") 
-  parser.add_option("-t", "--reduce-tasks", type="int", default=150, 
+  parser.add_option("-t", "--reduce-tasks", type="int", default=160, 
       help="Number of reduce tasks in Shark")
   parser.add_option("-z", "--clear-buffer-cache", action="store_true",
       default=False, help="Clear disk buffer cache between query runs")
@@ -328,7 +328,8 @@ def run_shark_benchmark(opts):
     ensure_spark_stopped_on_slaves(slaves)
     print "Query %s : Trial %i" % (opts.query_num, i+1)
     print "Log output on master in ", remote_tmp_file
-    ssh_shark("%s" % remote_query_file)
+    # TODO: remove the cd! This is just here because metastore_db is in wrong place.
+    ssh_shark("cd shark; %s" % remote_query_file)
     local_results_file = os.path.join(LOCAL_TMP_DIR, "%s_results" % prefix)
     scp_from(opts.shark_host, opts.shark_identity_file, "root",
         "/mnt/%s_results" % prefix, local_results_file)

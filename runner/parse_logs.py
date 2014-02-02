@@ -322,6 +322,7 @@ def main(argv):
   analyzer = Analyzer(filename)
 
   analyzer.analyze_for_speedup(0)
+  analyzer.analyze_for_speedup(0.25)
   analyzer.analyze_for_speedup(0.5)
   analyzer.analyze_for_speedup(0.75)
   analyzer.analyze_for_speedup(0.9)
