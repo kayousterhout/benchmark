@@ -128,7 +128,11 @@ def make_input_cached(query):
 
 # Turn a given query into one that creates cached tables
 def make_output_cached(query):
-  return query.replace(TMP_TABLE, TMP_TABLE_CACHED + " TBLPROPERTIES('shark.cache'='memory_only')")
+  name_replaced = query.replace(TMP_TABLE, TMP_TABLE_CACHED)
+  add_memory_only = name_replaced.replace(
+    "CREATE TABLE %s" % TMP_TABLE_CACHED,
+    "CREATE TABLE %s TBLPROPERTIES('shark.cache'='memory_only')" % TMP_TABLE_CACHED)
+  return add_memory_only
 
 ### Runner ###
 def parse_args():
@@ -210,11 +214,21 @@ def parse_args():
     
   return opts
 
+def get_ssh_command(host, username, identity_file, command):
+  return ("ssh -t -o StrictHostKeyChecking=no -i %s %s@%s '%s'" %
+    (identity_file, username, host, command))
+
 # Run a command on a host through ssh, throwing an exception if ssh fails
 def ssh(host, username, identity_file, command):
   return subprocess.check_call(
-      "ssh -t -o StrictHostKeyChecking=no -i %s %s@%s '%s'" %
-      (identity_file, username, host, command), shell=True)
+    get_ssh_command(host, username, identity_file, command), 
+    shell=True)
+
+# Run a command on a host through ssh, and return the result.
+def ssh_get_stdout(host, username, identity_file, command):
+  return subprocess.check_output(
+    get_ssh_command(host, username, identity_file, command),
+    shell=True)
 
 # Copy a file to a given host through scp, throwing an exception if scp fails
 def scp_to(host, identity_file, username, local_file, remote_file):
@@ -232,6 +246,10 @@ def run_shark_benchmark(opts):
   def ssh_shark(command):
     command = "source /root/.bash_profile; %s" % command
     ssh(opts.shark_host, "root", opts.shark_identity_file, command)
+
+  def ssh_get_stdout_shark(command):
+    command = "source /root/.bash_profile; %s" % command
+    return ssh_get_stdout(opts.shark_host, "root", opts.shark_identity_file, command)
 
   local_clean_query = CLEAN_QUERY
   local_query_map = QUERY_MAP
@@ -328,8 +346,23 @@ def run_shark_benchmark(opts):
     ensure_spark_stopped_on_slaves(slaves)
     print "Query %s : Trial %i" % (opts.query_num, i+1)
     print "Log output on master in ", remote_tmp_file
-    # TODO: remove the cd! This is just here because metastore_db is in wrong place.
-    ssh_shark("cd shark; %s" % remote_query_file)
+
+    ssh_shark(remote_query_file)
+    
+     # Copy job logs back to local machine.
+    job_logger_dir_name = ssh_get_stdout_shark(
+      "ls -rt /tmp/spark-root | head -n 1").strip("\n").strip("\r")
+    job_dir_name = ssh_get_stdout_shark(
+      "ls -rt /tmp/spark-root/%s | head -n 1" % job_logger_dir_name).strip("\n").strip("\r")
+    local_job_logs_file = os.path.join(LOCAL_TMP_DIR, "%s_job_log" % prefix)
+    print "Copying job logs back to", local_job_logs_file
+    scp_from(
+      opts.shark_host,
+      opts.shark_identity_file,
+      "root",
+      "/tmp/spark-root/%s/%s" % (job_logger_dir_name, job_dir_name),
+      local_job_logs_file)
+
     local_results_file = os.path.join(LOCAL_TMP_DIR, "%s_results" % prefix)
     scp_from(opts.shark_host, opts.shark_identity_file, "root",
         "/mnt/%s_results" % prefix, local_results_file)

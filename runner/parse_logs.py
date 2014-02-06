@@ -3,7 +3,10 @@ import collections
 import math
 import sys
 
-""" N should be sorted before calling this function. """
+""" Returns the "percent" percentile in the list N.
+
+Assumes N is sorted.
+"""
 def get_percentile(N, percent, key=lambda x:x):
     if not N:
         return 0
@@ -19,9 +22,12 @@ def get_percentile(N, percent, key=lambda x:x):
 """ Simulates the completion time of the given set of tasks, assuming 40 slots. """
 def simulate(tasks, runtime_function, sort=True, verbose=False):
   if sort:
+    # Important to sort tasks by their start time, because if tasks are sorted by
+    # finish time, the longest tasks will end up in the last wave, which can artificially
+    # inflate job completion time.
     tasks.sort(key = lambda x: x.start_time)
 
-  # Sorted list of task finish times.
+  # Sorted list of task finish times, measured as the time from when the job started.
   finish_times = []
   # Start 40 tasks.
   while len(finish_times) < 40 and len(tasks) > 0:
@@ -42,7 +48,7 @@ def simulate(tasks, runtime_function, sort=True, verbose=False):
   # Job finishes when the last task is done.
   return finish_times[-1]
 
-""" Class that replays the execution of the stage."""
+""" Class that replays the execution of the given set of tasks. """
 class Simulation:
   """ tasks_lists is a list of tasks, possibly that were in different stages. """
   def __init__(self, tasks_lists, relative_fetch_time):
@@ -70,7 +76,7 @@ class Simulation:
       # Drop the tasks with the highest 5% of non-network runtime.
       non_net_runtimes = [t.runtime_faster_fetch(relative_fetch_time) for t in tasks]
       non_net_runtimes.sort()
-# TODO: Better to RELACE the highest 95% with median runtime?
+      # TODO: Better to RELACE the highest 95% with median runtime?
       tasks_without_stragglers_2.extend(
         [t for t in tasks
          if (t.runtime_faster_fetch(relative_fetch_time)) <= get_percentile(non_net_runtimes, 0.95)])
