@@ -21,7 +21,6 @@ LOCAL_TMP_DIR = "/tmp"
 
 ### Benchmark Queries ###
 TMP_TABLE = "result"
-TMP_TABLE_CACHED = "result_cached"
 CLEAN_QUERY = "DROP TABLE %s;" % TMP_TABLE
 
 # TODO: Factor this out into a separate file
@@ -128,11 +127,9 @@ def make_input_cached(query):
 
 # Turn a given query into one that creates cached tables
 def make_output_cached(query):
-  name_replaced = query.replace(TMP_TABLE, TMP_TABLE_CACHED)
-  add_memory_only = name_replaced.replace(
-    "CREATE TABLE %s" % TMP_TABLE_CACHED,
-    "CREATE TABLE %s TBLPROPERTIES('shark.cache'='memory_only')" % TMP_TABLE_CACHED)
-  return add_memory_only
+  return query.replace(
+    "CREATE TABLE %s" % TMP_TABLE,
+    'CREATE TABLE %s TBLPROPERTIES("shark.cache"="memory_only")' % TMP_TABLE)
 
 ### Runner ###
 def parse_args():
