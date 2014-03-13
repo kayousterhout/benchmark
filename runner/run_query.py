@@ -348,16 +348,17 @@ def run_shark_benchmark(opts):
     
      # Copy job logs back to local machine.
     job_logger_dir_name = ssh_get_stdout_shark(
-      "ls -rt /tmp/spark-root | head -n 1").strip("\n").strip("\r")
+      "ls -t /tmp/spark-root | head -n 1").strip("\n").strip("\r")
     job_dir_name = ssh_get_stdout_shark(
-      "ls -rt /tmp/spark-root/%s | head -n 1" % job_logger_dir_name).strip("\n").strip("\r")
-    local_job_logs_file = os.path.join(LOCAL_TMP_DIR, "%s_job_log" % prefix)
-    print "Copying job logs back to", local_job_logs_file
+      "ls -t /tmp/spark-root/%s | head -n 1" % job_logger_dir_name).strip("\n").strip("\r")
+    local_job_logs_file = os.path.join(LOCAL_TMP_DIR, "%s_%s_job_log" % (opts.query_num, prefix))
+    remote_job_logs_file = "/tmp/spark-root/%s/%s" % (job_logger_dir_name, job_dir_name)
+    print "Copying job logs from %s back to %s" % (remote_job_logs_file, local_job_logs_file)
     scp_from(
       opts.shark_host,
       opts.shark_identity_file,
       "root",
-      "/tmp/spark-root/%s/%s" % (job_logger_dir_name, job_dir_name),
+      remote_job_logs_file,
       local_job_logs_file)
 
     local_results_file = os.path.join(LOCAL_TMP_DIR, "%s_results" % prefix)

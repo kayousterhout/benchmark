@@ -105,8 +105,11 @@ class Task:
   def runtime(self):
     return self.finish_time - self.start_time
 
+  def finish_time_faster_fetch(self, relative_fetch_time):
+    return self.finish_time - (1 - relative_fetch_time) * self.fetch_wait
+
   def runtime_faster_fetch(self, relative_fetch_time):
-    return self.finish_time - self.start_time - (1 - relative_fetch_time) * self.fetch_wait
+    return self.finish_time_faster_fetch(relative_fetch_time) - self.start_time
 
   def __str__(self):
     return ("%s %s %s %s" % (self.start_time, self.finish_time, self.fetch_wait, self.finish_time - self.fetch_wait))
@@ -128,8 +131,9 @@ class Stage:
   def finish_time(self):
     return max([t.finish_time for t in self.tasks])
 
-  def finish_time_with_faster_fetch(self, relative_fetch_time):
-    return max([t.runtime_faster_fetch(relative_fetch_time) for t in self.tasks])
+  def runtime_with_faster_fetch(self, relative_fetch_time):
+    return (max([t.finish_time_faster_fetch(relative_fetch_time) for t in self.tasks]) -
+      self.start_time)
 
   def total_runtime(self):
     return sum([t.finish_time - t.start_time for t in self.tasks])
@@ -205,6 +209,7 @@ class Analyzer:
     # Compute the amount of overlapped time between stages
     # (there should just be two stages, at the beginning, that overlap and run concurrently).
     # This computation assumes that not more than two stages overlap.
+    print ["%s: %s tasks" % (id, len(s.tasks)) for id, s in self.stages.iteritems()]
     start_and_finish_times = [(id, s.start_time, s.finish_time()) for id, s in self.stages.iteritems()]
     start_and_finish_times.sort(key = lambda x: x[1])
     self.overlap = 0
@@ -243,7 +248,7 @@ class Analyzer:
 
     tasks_for_combined_stages = []
     for id, stage in self.stages.iteritems():
-      print "***", id, stage
+      print "Stage", id, stage
       stage_run_time = stage.finish_time() - stage.start_time
       total_time += stage_run_time
       print "Total time: ", stage.total_runtime(), "total w/o fetch:", stage.total_runtime_faster_fetch(relative_fetch_time), "Approx speedup: ", stage.total_runtime_faster_fetch(relative_fetch_time) * 1.0 / stage.total_runtime()
@@ -251,7 +256,7 @@ class Analyzer:
         (stage.approximate_runtime(), stage.approximate_runtime_faster_fetch(relative_fetch_time),
          stage.approximate_runtime_faster_fetch(relative_fetch_time) * 1.0 / stage.approximate_runtime()))
       if stage.has_fetch:
-        time_with_faster_fetch = stage.finish_time_with_faster_fetch(relative_fetch_time) - stage.start_time
+        time_with_faster_fetch = stage.runtime_with_faster_fetch(relative_fetch_time) 
         print ("Real run time: %s, without shuffle (no wave accounting): %s, Speedup: %s" %
           (stage_run_time, time_with_faster_fetch, time_with_faster_fetch * 1.0 / stage_run_time))
         total_time_with_faster_fetch += time_with_faster_fetch
@@ -270,20 +275,22 @@ class Analyzer:
         self.add_stage_to_simulated_totals([stage.tasks], relative_fetch_time)
 
     if len(self.stages_to_combine) > 0:
-      print "******", self.stages_to_combine
+      print "Combining stages:", self.stages_to_combine
       self.add_stage_to_simulated_totals(tasks_for_combined_stages, relative_fetch_time)
 
     print ("****************************************")
     speedup = total_time_with_faster_fetch * 1.0 / total_time
-    print ("Total time: %s, without shuffle: %s, speedup: %s" %
+    print ("Total time: %s, without shuffle (no wave accounting): %s, speedup: %s" %
       (total_time, total_time_with_faster_fetch, speedup))
 
+    approximate_speedup = approx_total_time_with_faster_fetch * 1.0 / approx_total_time
     print ("Approx total: %s, without shuffle: %s, speedup %s" %
-      (approx_total_time, approx_total_time_with_faster_fetch, approx_total_time_with_faster_fetch * 1.0 / approx_total_time))
+      (approx_total_time, approx_total_time_with_faster_fetch, approximate_speedup))
 
+    simulated_speedup = (self.simulated_total_time_with_faster_fetch * 1.0 /
+      self.simulated_total_time)
     print ("Sim %s without shuffle %s speedup %s" %
-      (self.simulated_total_time, self.simulated_total_time_with_faster_fetch,
-       self.simulated_total_time_with_faster_fetch * 1.0 / self.simulated_total_time))
+      (self.simulated_total_time, self.simulated_total_time_with_faster_fetch, simulated_speedup))
 
     norm_stragglers_speedup = self.simulated_total_normalized_stragglers * 1.0 / self.simulated_total_time
     no_stragglers_speedup = self.simulated_total_no_stragglers * 1.0 / self.simulated_total_time
@@ -300,6 +307,8 @@ class Analyzer:
       self.simulated_total_no_stragglers_2)
     print ("Speedup from normalizing stragglers 2: %s, network imp: %s" %
       (no_stragglers_speedup_2, no_stragglers_no_shuffle_speedup_2))
+
+    return (approximate_speedup, simulated_speedup, no_stragglers_no_shuffle_speedup_2)
 
   def add_stage_to_simulated_totals(self, task_lists, relative_fetch_time):
     s = Simulation(task_lists, relative_fetch_time)
@@ -321,17 +330,18 @@ class Analyzer:
        s.runtime_with_no_stragglers_and_no_fetch_2 * 1.0 / s.runtime_with_no_stragglers_2))
     self.simulated_total_no_stragglers_2 += s.runtime_with_no_stragglers_2
     self.simulated_total_no_stragglers_no_fetch_2 += s.runtime_with_no_stragglers_and_no_fetch_2
-
       
 def main(argv):
   filename = argv[0]
   analyzer = Analyzer(filename)
+  results_file = open("%s_improvements" % filename, "w")
 
-  analyzer.analyze_for_speedup(0)
-  analyzer.analyze_for_speedup(0.25)
-  analyzer.analyze_for_speedup(0.5)
-  analyzer.analyze_for_speedup(0.75)
-  analyzer.analyze_for_speedup(0.9)
+  for speedup in [0, 0.25, 0.5, 0.75, 0.9]:
+    results = analyzer.analyze_for_speedup(speedup)
+    results_file.write("%s" % speedup)
+    for result in results:
+      results_file.write("\t%s" % result)
+    results_file.write("\n")
 
 if __name__ == "__main__":
   main(sys.argv[1:])
