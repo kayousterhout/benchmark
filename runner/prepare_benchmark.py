@@ -193,19 +193,19 @@ def prepare_shark_dataset(opts):
   ssh_shark("/root/spark-ec2/copy-dir /root/url_count.py")
   
   ssh_shark(
-    "/root/shark/bin/shark -e \"DROP TABLE IF EXISTS rankings; " \
+    "/root/shark/bin/shark -skipRddReload -e \"DROP TABLE IF EXISTS rankings; " \
     "CREATE EXTERNAL TABLE rankings (pageURL STRING, pageRank INT, " \
     "avgDuration INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\",\\\" " \
     "STORED AS TEXTFILE LOCATION \\\"/user/shark/benchmark/rankings\\\";\"")
 
   ssh_shark(
-    "/root/shark/bin/shark -e \"DROP TABLE IF EXISTS scratch; " \
+    "/root/shark/bin/shark -skipRddReload -e \"DROP TABLE IF EXISTS scratch; " \
     "CREATE EXTERNAL TABLE scratch (pageURL STRING, pageRank INT, " \
     "avgDuration INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\",\\\" " \
     "STORED AS TEXTFILE LOCATION \\\"/user/shark/benchmark/scratch\\\";\"")
 
   ssh_shark(
-    "/root/shark/bin/shark -e \"DROP TABLE IF EXISTS uservisits; " \
+    "/root/shark/bin/shark -skipRddReload -e \"DROP TABLE IF EXISTS uservisits; " \
     "CREATE EXTERNAL TABLE uservisits (sourceIP STRING,destURL STRING," \
     "visitDate STRING,adRevenue DOUBLE,userAgent STRING,countryCode STRING," \
     "languageCode STRING,searchWord STRING,duration INT ) " \

@@ -118,19 +118,17 @@ QUERY_MAP = {
                     create_as(QUERY_3c_SQL)),
              '4':  (QUERY_4_HQL, None, None)}
 
-# Turn a given query into a version using cached tables. Only the tables
-# that we create need to be named as X_cached; we cache the existing tables
-# using Shark's explicit "CACHE" query.
-def make_input_cached(query):
-  return query.replace("url_counts_partial", "url_counts_partial_cached") \
-              .replace("url_counts_total", "url_counts_total_cached")
-
 # Turn a given query into one that creates cached tables
 def make_output_cached(query):
-  return query.replace(
+  tmp_table_replaced = query.replace(
     "CREATE TABLE %s" % TMP_TABLE,
     'CREATE TABLE %s TBLPROPERTIES("shark.cache"="memory_only")' % TMP_TABLE)
-
+  urls_partial = tmp_table_replaced.replace(
+    "CREATE TABLE url_counts_partial",
+    'CREATE TABLE url_counts_partial TBLPROPERTIES("shark.cache"="memory_only")')
+  return urls_partial.replace(
+    "CREATE TABLE url_counts_total",
+    'CREATE TABLE url_counts_total TBLPROPERTIES("shark.cache"="memory_only")')
 ### Runner ###
 def parse_args():
   parser = OptionParser(usage="run_query.py [options]")
@@ -223,9 +221,8 @@ def ssh(host, username, identity_file, command):
 
 # Run a command on a host through ssh, and return the result.
 def ssh_get_stdout(host, username, identity_file, command):
-  return subprocess.check_output(
-    get_ssh_command(host, username, identity_file, command),
-    shell=True)
+  command = get_ssh_command(host, username, identity_file, command),
+  return subprocess.check_output(command, shell=True)
 
 # Copy a file to a given host through scp, throwing an exception if scp fails
 def scp_to(host, identity_file, username, local_file, remote_file):
@@ -244,9 +241,9 @@ def run_shark_benchmark(opts):
     command = "source /root/.bash_profile; %s" % command
     ssh(opts.shark_host, "root", opts.shark_identity_file, command)
 
-  def ssh_get_stdout_shark(command):
+  def ssh_get_stdout_shark(command, host=opts.shark_host):
     command = "source /root/.bash_profile; %s" % command
-    return ssh_get_stdout(opts.shark_host, "root", opts.shark_identity_file, command)
+    return ssh_get_stdout(host, "root", opts.shark_identity_file, command)
 
   local_clean_query = CLEAN_QUERY
   local_query_map = QUERY_MAP
@@ -289,20 +286,21 @@ def run_shark_benchmark(opts):
     local_clean_query = make_output_cached(CLEAN_QUERY)
 
     def convert_to_cached(query):
-      return (make_output_cached(make_input_cached(query[0])), )
+      return (make_output_cached(query[0]), )
 
     local_query_map = {k: convert_to_cached(v) for k, v in QUERY_MAP.items()}
 
     # Set up cached tables
     if '4' in opts.query_num:
       # Query 4 uses entirely different tables
+      # Have to uncache to deal with Shark bug. 
       query_list += """
-                    CACHE documents;
+                    UNCACHE documents; CACHE documents;
                     """
     else:
       query_list += """
-                    CACHE uservisits;
-                    CACHE rankings;
+                    UNCACHE uservisits; CACHE uservisits;
+                    UNCACHE rankings; CACHE rankings;
                     """
 
   if '4' not in opts.query_num:
@@ -351,7 +349,8 @@ def run_shark_benchmark(opts):
       "ls -t /tmp/spark-root | head -n 1").strip("\n").strip("\r")
     job_dir_name = ssh_get_stdout_shark(
       "ls -t /tmp/spark-root/%s | head -n 1" % job_logger_dir_name).strip("\n").strip("\r")
-    local_job_logs_file = os.path.join(LOCAL_TMP_DIR, "%s_%s_job_log" % (opts.query_num, prefix))
+    local_job_logs_file = os.path.join(
+      LOCAL_TMP_DIR, "%s_%s_%s_job_log" % (opts.query_num, prefix, i))
     remote_job_logs_file = "/tmp/spark-root/%s/%s" % (job_logger_dir_name, job_dir_name)
     print "Copying job logs from %s back to %s" % (remote_job_logs_file, local_job_logs_file)
     scp_from(
@@ -360,6 +359,23 @@ def run_shark_benchmark(opts):
       "root",
       remote_job_logs_file,
       local_job_logs_file)
+    
+    # Copy proc logs back to local machine.
+    for slave in slaves:
+      log_dir_name = ssh_get_stdout_shark(
+        "ls -t /root/spark/work | head -n 1", host=slave).strip("\n").strip("\r")
+      job_dir_name = ssh_get_stdout_shark(
+        "ls -rt /root/spark/work/%s | head -n 1" % log_dir_name, host=slave).strip("\n").strip("\r")
+      local_proc_log_file = os.path.join(
+        LOCAL_TMP_DIR, "%s_%s_%s_%s_proc_log" % (opts.query_num, slave, prefix, i))
+      remote_proc_log_file = "/root/spark/work/%s/%s/stderr" % (log_dir_name, job_dir_name)
+      print "Copying proc logs from %s on slave %s back to %s" % (remote_proc_log_file, slave, local_proc_log_file)
+      scp_from(
+        slave,
+        opts.shark_identity_file,
+        "root",
+        remote_proc_log_file,
+        local_proc_log_file)
 
     local_results_file = os.path.join(LOCAL_TMP_DIR, "%s_results" % prefix)
     scp_from(opts.shark_host, opts.shark_identity_file, "root",
