@@ -303,9 +303,17 @@ def run_shark_benchmark(opts):
                     UNCACHE rankings; CACHE rankings;
                     """
 
-  if '4' not in opts.query_num:
-    query_list += local_clean_query
-  query_list += local_query_map[opts.query_num][0]
+  if not opts.shark_no_cache:
+    # Make a single query file (so run all of the queries in the same set of JVMS).
+    # This helps amortize the time to load queries into memory.
+    for i in range(opts.num_trials):
+      if '4' not in opts.query_num:
+        query_list += local_clean_query
+      query_list += local_query_map[opts.query_num][0]
+  else:
+    if '4' not in opts.query_num:
+      query_list += local_clean_query
+    query_list += local_query_map[opts.query_num][0]
 
   query_list = re.sub("\s\s+", " ", query_list.replace('\n', ' '))
 
@@ -317,7 +325,6 @@ def run_shark_benchmark(opts):
 
   query_file.write(
     "%s -skipRddReload -e '%s' > %s 2>&1\n" % (runner, query_list, remote_tmp_file))
-
   query_file.write(
       "cat %s | grep Time | grep -v INFO |grep -v MapReduce >> %s\n" % (
         remote_tmp_file, remote_result_file))
@@ -336,7 +343,7 @@ def run_shark_benchmark(opts):
   results = []
   contents = []
 
-  for i in range(opts.num_trials):
+  def run_trial(i, slaves, remote_tmp_file):
     print "Stopping Executors on Slaves....."
     ensure_spark_stopped_on_slaves(slaves)
     print "Query %s : Trial %i" % (opts.query_num, i+1)
@@ -390,6 +397,8 @@ def run_shark_benchmark(opts):
       print "Parts: %s, %s" % (part_a, part_b)
       result = float(part_a) + float(part_b)
     else:
+      # TODO: This is wrong when we run all of the queries in the same JVM (so one run results
+      # in many results.  Fix this!
       result = all_times[-1] # Only want time of last query
 
     print "Result: ", result
@@ -403,6 +412,13 @@ def run_shark_benchmark(opts):
     print "Clean Up...."
     ssh_shark("rm /mnt/%s_results" % prefix)
     os.remove(local_results_file)
+
+  if opts.shark_no_cache:
+    for i in range(opts.num_trials):
+      run_trial(i, slaves, remote_tmp_file)
+  else:
+    # We run the query num_trials time in the same JVM, so only need 1 "trial."
+    run_trial(0, slaves, remote_tmp_file)
 
   os.remove(local_slaves_file)
   os.remove(local_query_file)
