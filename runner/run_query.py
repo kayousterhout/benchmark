@@ -169,7 +169,7 @@ def parse_args():
   parser.add_option("--num-trials", type="int", default=10,
       help="Number of trials to run for this query")
   parser.add_option("--use-sharkserver", action="store_true", default=False,
-      help="Run shark queries using an already-running shark server (assumes port 4444)"
+      help="Run shark queries using an already-running shark server (assumes port 4444)")
 
 
   parser.add_option("-q", "--query-num", default="1",
@@ -262,7 +262,7 @@ def run_shark_benchmark(opts):
 
   runner = "/root/shark/bin/shark-withinfo"
 
-  if opt.use_sharkserver:
+  if opts.use_sharkserver:
     runner += " -h localhost -p 4444"
 
   print "Getting Slave List"
@@ -270,13 +270,16 @@ def run_shark_benchmark(opts):
            "/root/spark-ec2/slaves", local_slaves_file)
   slaves = map(str.strip, open(local_slaves_file).readlines())
 
-  print "Restarting standalone scheduler..."
-  ssh_shark("/root/spark/sbin/stop-all.sh")
-  ensure_spark_stopped_on_slaves(slaves)
-  time.sleep(30)
-  ssh_shark("/root/spark/sbin/stop-all.sh")
-  ssh_shark("/root/spark/sbin/start-all.sh")
-  time.sleep(10)
+  if not opts.use_sharkserver:
+    # Don't restart everything if using sharkserver: the whole point is to use an already-
+    # running version of Shark.
+    print "Restarting standalone scheduler..."
+    ssh_shark("/root/spark/sbin/stop-all.sh")
+    ensure_spark_stopped_on_slaves(slaves)
+    time.sleep(30)
+    ssh_shark("/root/spark/sbin/stop-all.sh")
+    ssh_shark("/root/spark/sbin/start-all.sh")
+    time.sleep(10)
 
   # Two modes here: Shark Mem and Shark Disk. If using Shark disk clear buffer
   # cache in-between each query. If using Shark Mem, used cached tables.
@@ -287,7 +290,8 @@ def run_shark_benchmark(opts):
   query_list += "SELECT COUNT(*) FROM scratch;"
 
   # Create cached queries for Shark Mem
-  if not opts.shark_no_cache:
+  # If using sharkserver, assume tables have already been cached. 
+  if not opts.use_sharkserver and not opts.shark_no_cache:
     local_clean_query = make_output_cached(CLEAN_QUERY)
 
     def convert_to_cached(query):
@@ -342,8 +346,10 @@ def run_shark_benchmark(opts):
   contents = []
 
   for i in range(opts.num_trials):
-    print "Stopping Executors on Slaves....."
-    ensure_spark_stopped_on_slaves(slaves)
+    if not opts.use_sharkserver:
+      print "Stopping Executors on Slaves....."
+      ensure_spark_stopped_on_slaves(slaves)
+
     print "Query %s : Trial %i" % (opts.query_num, i+1)
     print "Log output on master in ", remote_tmp_file
 
