@@ -168,6 +168,8 @@ def parse_args():
       help="Database to use in Redshift")
   parser.add_option("--num-trials", type="int", default=10,
       help="Number of trials to run for this query")
+  parser.add_option("--use-sharkserver", action="store_true", default=False,
+      help="Run shark queries using an already-running shark server (assumes port 4444)"
 
 
   parser.add_option("-q", "--query-num", default="1",
@@ -259,6 +261,9 @@ def run_shark_benchmark(opts):
   remote_query_file = "/mnt/%s" % query_file_name
 
   runner = "/root/shark/bin/shark-withinfo"
+
+  if opt.use_sharkserver:
+    runner += " -h localhost -p 4444"
 
   print "Getting Slave List"
   scp_from(opts.shark_host, opts.shark_identity_file, "root",
