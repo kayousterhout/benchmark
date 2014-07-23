@@ -170,6 +170,8 @@ def parse_args():
       help="Number of trials to run for this query")
   parser.add_option("--use-sharkserver", action="store_true", default=False,
       help="Run shark queries using an already-running shark server (assumes port 4444)")
+  parser.add_option("--copy-proc-logs", action="store_true", default=False,
+      help="Copy the proc logs from each worker back to this machine")
 
 
   parser.add_option("-q", "--query-num", default="1",
@@ -287,7 +289,8 @@ def run_shark_benchmark(opts):
   query_list = "set mapred.reduce.tasks = %s;" % opts.reduce_tasks
 
   # Throw away query for JVM warmup
-  query_list += "SELECT COUNT(*) FROM scratch;"
+  if not opts.use_sharkserver:
+    query_list += "SELECT COUNT(*) FROM scratch;"
 
   # Create cached queries for Shark Mem
   # If using sharkserver, assume tables have already been cached. 
@@ -322,6 +325,7 @@ def run_shark_benchmark(opts):
   print query_list.replace(';', ";\n")
 
   if opts.clear_buffer_cache:
+    print "Clearing buffer cache"
     query_file.write("python /root/shark/bin/dev/clear-buffer-cache.py\n")
 
   query_file.write(
@@ -355,7 +359,7 @@ def run_shark_benchmark(opts):
 
     ssh_shark(remote_query_file)
     
-     # Copy job logs back to local machine.
+    # Copy job logs back to local machine.
     job_logger_dir_name = ssh_get_stdout_shark(
       "ls -t /tmp/spark-root | head -n 1").strip("\n").strip("\r")
     job_dir_name = ssh_get_stdout_shark(
@@ -372,21 +376,22 @@ def run_shark_benchmark(opts):
       local_job_logs_file)
     
     # Copy proc logs back to local machine.
-    for slave in slaves:
-      log_dir_name = ssh_get_stdout_shark(
-        "ls -t /root/spark/work | head -n 1", host=slave).strip("\n").strip("\r")
-      job_dir_name = ssh_get_stdout_shark(
-        "ls -rt /root/spark/work/%s | head -n 1" % log_dir_name, host=slave).strip("\n").strip("\r")
-      local_proc_log_file = os.path.join(
-        LOCAL_TMP_DIR, "%s_%s_%s_%s_proc_log" % (opts.query_num, slave, prefix, i))
-      remote_proc_log_file = "/root/spark/work/%s/%s/stderr" % (log_dir_name, job_dir_name)
-      print "Copying proc logs from %s on slave %s back to %s" % (remote_proc_log_file, slave, local_proc_log_file)
-      scp_from(
-        slave,
-        opts.shark_identity_file,
-        "root",
-        remote_proc_log_file,
-        local_proc_log_file)
+    if opts.copy_proc_logs:
+      for slave in slaves:
+        log_dir_name = ssh_get_stdout_shark(
+          "ls -t /root/spark/work | head -n 1", host=slave).strip("\n").strip("\r")
+        job_dir_name = ssh_get_stdout_shark(
+          "ls -rt /root/spark/work/%s | head -n 1" % log_dir_name, host=slave).strip("\n").strip("\r")
+        local_proc_log_file = os.path.join(
+          LOCAL_TMP_DIR, "%s_%s_%s_%s_proc_log" % (opts.query_num, slave, prefix, i))
+        remote_proc_log_file = "/root/spark/work/%s/%s/stderr" % (log_dir_name, job_dir_name)
+        print "Copying proc logs from %s on slave %s back to %s" % (remote_proc_log_file, slave, local_proc_log_file)
+        scp_from(
+          slave,
+          opts.shark_identity_file,
+          "root",
+          remote_proc_log_file,
+          local_proc_log_file)
 
     local_results_file = os.path.join(LOCAL_TMP_DIR, "%s_results" % prefix)
     scp_from(opts.shark_host, opts.shark_identity_file, "root",
