@@ -288,6 +288,9 @@ def run_shark_benchmark(opts):
 
   query_list = "set mapred.reduce.tasks = %s;" % opts.reduce_tasks
 
+  # Set parameters to compress output.
+  query_list += "SET hive.exec.compress.output=True;SET io.seqfile.compression.type=BLOCK;"
+
   # Throw away query for JVM warmup
   if not opts.use_sharkserver:
     query_list += "SELECT COUNT(*) FROM scratch;"
