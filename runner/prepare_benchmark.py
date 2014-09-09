@@ -182,10 +182,10 @@ def prepare_shark_dataset(opts):
       "/user/shark/benchmark/crawl/" % (opts.file_format, opts.data_prefix))
 
     # Scratch table used for JVM warmup
-    ssh_shark(
-      "/root/mapreduce/bin/hadoop distcp /user/shark/benchmark/rankings " \
-      "/user/shark/benchmark/scratch"
-    )
+    #ssh_shark(
+    #  "/root/mapreduce/bin/hadoop distcp /user/shark/benchmark/rankings " \
+    #  "/user/shark/benchmark/scratch"
+    #)
 
   print "=== CREATING HIVE TABLES FOR BENCHMARK ==="
   scp_to(opts.shark_host, opts.shark_identity_file, "root", "udf/url_count.py",
@@ -198,11 +198,11 @@ def prepare_shark_dataset(opts):
     "avgDuration INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\",\\\" " \
     "STORED AS TEXTFILE LOCATION \\\"/user/shark/benchmark/rankings\\\";\"")
 
-  ssh_shark(
-    "/root/shark/bin/shark -skipRddReload -e \"DROP TABLE IF EXISTS scratch; " \
-    "CREATE EXTERNAL TABLE scratch (pageURL STRING, pageRank INT, " \
-    "avgDuration INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\",\\\" " \
-    "STORED AS TEXTFILE LOCATION \\\"/user/shark/benchmark/scratch\\\";\"")
+  #ssh_shark(
+  #  "/root/shark/bin/shark -skipRddReload -e \"DROP TABLE IF EXISTS scratch; " \
+  #  "CREATE EXTERNAL TABLE scratch (pageURL STRING, pageRank INT, " \
+  #  "avgDuration INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\",\\\" " \
+  #  "STORED AS TEXTFILE LOCATION \\\"/user/shark/benchmark/scratch\\\";\"")
 
   ssh_shark(
     "/root/shark/bin/shark -skipRddReload -e \"DROP TABLE IF EXISTS uservisits; " \

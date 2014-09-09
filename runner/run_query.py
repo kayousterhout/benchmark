@@ -296,8 +296,7 @@ def run_shark_benchmark(opts):
     query_list += "SELECT COUNT(*) FROM scratch;"
 
   # Create cached queries for Shark Mem
-  # If using sharkserver, assume tables have already been cached. 
-  if not opts.use_sharkserver and not opts.shark_no_cache:
+  if not opts.shark_no_cache:
     local_clean_query = make_output_cached(CLEAN_QUERY)
 
     def convert_to_cached(query):
@@ -305,18 +304,20 @@ def run_shark_benchmark(opts):
 
     local_query_map = {k: convert_to_cached(v) for k, v in QUERY_MAP.items()}
 
-    # Set up cached tables
-    if '4' in opts.query_num:
-      # Query 4 uses entirely different tables
-      # Have to uncache to deal with Shark bug. 
-      query_list += """
-                    UNCACHE documents; CACHE documents;
-                    """
-    else:
-      query_list += """
-                    UNCACHE uservisits; CACHE uservisits;
-                    UNCACHE rankings; CACHE rankings;
-                    """
+    # If using Shark server, assumes tables have already been cached.
+    if not opts.use_sharkserver:
+      # Set up cached tables
+      if '4' in opts.query_num:
+        # Query 4 uses entirely different tables
+        # Have to uncache to deal with Shark bug.
+        query_list += """
+                      UNCACHE documents; CACHE documents;
+                      """
+      else:
+        query_list += """
+                      UNCACHE uservisits; CACHE uservisits;
+                      UNCACHE rankings; CACHE rankings;
+                      """
 
   if '4' not in opts.query_num:
     query_list += local_clean_query
@@ -365,11 +366,11 @@ def run_shark_benchmark(opts):
     # Copy job logs back to local machine.
     job_logger_dir_name = ssh_get_stdout_shark(
       "ls -t /tmp/spark-root | head -n 1").strip("\n").strip("\r")
-    job_dir_name = ssh_get_stdout_shark(
+    job_log_name = ssh_get_stdout_shark(
       "ls -t /tmp/spark-root/%s | head -n 1" % job_logger_dir_name).strip("\n").strip("\r")
     local_job_logs_file = os.path.join(
       LOCAL_TMP_DIR, "%s_%s_%s_job_log" % (opts.query_num, prefix, i))
-    remote_job_logs_file = "/tmp/spark-root/%s/%s" % (job_logger_dir_name, job_dir_name)
+    remote_job_logs_file = "/tmp/spark-root/%s/%s" % (job_logger_dir_name, job_log_name)
     print "Copying job logs from %s back to %s" % (remote_job_logs_file, local_job_logs_file)
     scp_from(
       opts.shark_host,
@@ -377,7 +378,24 @@ def run_shark_benchmark(opts):
       "root",
       remote_job_logs_file,
       local_job_logs_file)
-    
+
+    if '4' in opts.query_num:
+      # Need to copy back an additional job log, because the query is split between two logs.
+      job_log_name = str(int(job_log_name) - 1)
+      remote_job_logs_file = "/tmp/spark-root/%s/%s" % (job_logger_dir_name, job_log_name)
+      full_local_job_logs_file = os.path.join(
+        LOCAL_TMP_DIR, "%s_FULL_%s_%s_job_log" % (opts.query_num, prefix, i))
+      print "Copying job logs from %s back to %s" % (remote_job_logs_file, full_local_job_logs_file)
+      scp_from(
+        opts.shark_host,
+        opts.shark_identity_file,
+        "root",
+        remote_job_logs_file,
+        full_local_job_logs_file)
+      print "Concatenating %s into %s" % (local_job_logs_file, full_local_job_logs_file)
+      subprocess.check_output("cat %s >> %s" % (local_job_logs_file, full_local_job_logs_file),
+        shell=True)
+ 
     # Copy proc logs back to local machine.
     if opts.copy_proc_logs:
       for slave in slaves:
