@@ -170,6 +170,10 @@ def parse_args():
       help="Number of trials to run for this query")
   parser.add_option("--use-sharkserver", action="store_true", default=False,
       help="Run shark queries using an already-running shark server (assumes port 4444)")
+  parser.add_option("--output-directory", default="/tmp/",
+      help="Directory to use for job logs")
+  parser.add_option("--compress-output", action="store_true", default=False,
+      help-="Whether to compress output files")
   parser.add_option("--copy-proc-logs", action="store_true", default=False,
       help="Copy the proc logs from each worker back to this machine")
 
@@ -288,8 +292,9 @@ def run_shark_benchmark(opts):
 
   query_list = "set mapred.reduce.tasks = %s;" % opts.reduce_tasks
 
-  # Set parameters to compress output.
-  query_list += "SET hive.exec.compress.output=True;SET io.seqfile.compression.type=BLOCK;"
+  if opts.compress_output:
+    # Set parameters to compress output.
+    query_list += "SET hive.exec.compress.output=True;SET io.seqfile.compression.type=BLOCK;"
 
   # Throw away query for JVM warmup
   if not opts.use_sharkserver:
@@ -369,7 +374,7 @@ def run_shark_benchmark(opts):
     job_log_name = ssh_get_stdout_shark(
       "ls -t /tmp/spark-root/%s | head -n 1" % job_logger_dir_name).strip("\n").strip("\r")
     local_job_logs_file = os.path.join(
-      LOCAL_TMP_DIR, "%s_%s_%s_job_log" % (opts.query_num, prefix, i))
+      opts.output_directory, "%s_%s_%s_job_log" % (opts.query_num, prefix, i))
     remote_job_logs_file = "/tmp/spark-root/%s/%s" % (job_logger_dir_name, job_log_name)
     print "Copying job logs from %s back to %s" % (remote_job_logs_file, local_job_logs_file)
     scp_from(

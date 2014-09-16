@@ -4,11 +4,12 @@ import sys
 
 COMMAND_TEMPLATE = ("./run-query.sh --shark --shark-host=%s --shark-identity-file=%s " +
   #"--query-num=%s --num-trials=%d --shark-no-cache --clear-buffer-cache --use-sharkserver")
-  "--query-num=%s --num-trials=%d --shark-no-cache --clear-buffer-cache --use-sharkserver")
+  "--query-num=%s --num-trials=%d --clear-buffer-cache --use-sharkserver")
 
-queries = ["1a", "1b", "1c", "2a", "2b", "2c", "3a", "3b", "3c", "4"]
+#queries = ["1a", "1b", "1c", "2a", "2b", "2c", "3a", "3b", "3c", "4"]
 #queries = ["1a", "2a", "3a", "4"]
 #queries = ["1a", "1b", "1c", "2a", "2b", "2c", "3a", "3b", "3c"]
+queries = ["1c"]
 #queries = ["1a", "1b", "1c"]
 #queries = ["4"]
 #queries = ["3a", "3b", "3c"]
