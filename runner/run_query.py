@@ -173,7 +173,7 @@ def parse_args():
   parser.add_option("--output-directory", default="/tmp/",
       help="Directory to use for job logs")
   parser.add_option("--compress-output", action="store_true", default=False,
-      help-="Whether to compress output files")
+      help="Whether to compress output files")
   parser.add_option("--copy-proc-logs", action="store_true", default=False,
       help="Copy the proc logs from each worker back to this machine")
 
@@ -389,7 +389,7 @@ def run_shark_benchmark(opts):
       job_log_name = str(int(job_log_name) - 1)
       remote_job_logs_file = "/tmp/spark-root/%s/%s" % (job_logger_dir_name, job_log_name)
       full_local_job_logs_file = os.path.join(
-        LOCAL_TMP_DIR, "%s_FULL_%s_%s_job_log" % (opts.query_num, prefix, i))
+        opts.output_directory, "%s_FULL_%s_%s_job_log" % (opts.query_num, prefix, i))
       print "Copying job logs from %s back to %s" % (remote_job_logs_file, full_local_job_logs_file)
       scp_from(
         opts.shark_host,

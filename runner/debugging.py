@@ -4,16 +4,14 @@ import sys
 
 COMMAND_TEMPLATE = ("./run-query.sh --shark --shark-host=%s --shark-identity-file=%s " +
   #"--query-num=%s --num-trials=%d --shark-no-cache --clear-buffer-cache --use-sharkserver")
-  "--query-num=%s --num-trials=%d --shark-no-cache --clear-buffer-cache --use-sharkserver " +
-  "--output-directory=/Users/keo/Documents/trace-analysis/2014_09_16_spark_bdb_disk_nocompression_concurrency1_5trials")
+  "--output-directory=/Users/keo/Documents/trace-analysis/2014_09_18_spark_bdb_5machines_concurrency8_6trials_ext4 " +
+  "--query-num=%s --num-trials=%d --compress-output --shark-no-cache --clear-buffer-cache --use-sharkserver")
 
-#queries = ["1a", "1b", "1c", "2a", "2b", "2c", "3a", "3b", "3c", "4"]
-queries = ["3a"]
+queries = ["1a", "1b", "1c", "2a", "2b", "2c", "3a", "3b", "3c", "4"]
 #queries = ["1a", "2a", "3a", "4"]
 #queries = ["1a", "1b", "1c", "2a", "2b", "2c", "3a", "3b", "3c"]
-#queries = ["1c"]
+#queries = ["1a", "2a", "3a"]
 #queries = ["1a", "1b", "1c"]
-#queries = ["4"]
 #queries = ["3a", "3b", "3c"]
 
 def main(args):
