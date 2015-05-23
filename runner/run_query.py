@@ -66,7 +66,9 @@ QUERY_3a_HQL = " ".join(QUERY_3a_HQL.replace("\n", "").split())
 QUERY_3b_HQL = QUERY_3a_HQL.replace("1980-04-01", "1983-01-01")
 QUERY_3c_HQL = QUERY_3a_HQL.replace("1980-04-01", "2010-01-01")
 
-QUERY_4_HQL = """DROP TABLE IF EXISTS url_counts_partial;
+QUERY_4_HQL = """UNCACHE TABLE url_counts_partial;
+                 UNCACHE TABLE url_counts_total;
+                 DROP TABLE IF EXISTS url_counts_partial;
                  CREATE TABLE url_counts_partial AS
                    SELECT TRANSFORM (line)
                    USING "python /root/url_count.py" as (sourcePage,
@@ -319,24 +321,29 @@ def run_spark_benchmark(opts):
   # uncached tables. If using Spark SQL Mem, used cached tables.
 
   query_list = "set spark.sql.codegen=true; set spark.sql.shuffle.partitions = %s;" % opts.reduce_tasks
+  # Comment out for uncompressed output.
+  query_list += "SET hive.exec.compress.output=True;SET io.seqfile.compression.type=BLOCK;"
 
   # Create cached queries for Spark SQL Mem
   if not opts.spark_no_cache:
 
     # Set up cached tables
-    if '4' in opts.query_num:
-      # Query 4 uses entirely different tables
-      query_list += """
-                    CACHE TABLE documents;
-                    SELECT COUNT(*) FROM documents
-                    """
-    else:
-      query_list += """
-                    CACHE TABLE uservisits;
-                    CACHE TABLE rankings;
-                    SELECT COUNT(*) FROM uservisits;
-                    SELECT COUNT(*) FROM rankings;
-                    """
+    if False:
+# skip for now!! Done manually.
+      if '4' in opts.query_num:
+        # Query 4 uses entirely different tables
+        query_list += """
+                      CACHE TABLE documents;
+                      """
+      else:
+        query_list += """
+                      CACHE TABLE rankings;
+                      """
+        if '1' not in opts.query_num:
+          # For query 1, only need the rankings table.
+          query_list += """
+                        CACHE TABLE uservisits;
+                        """
 
   if '4' not in opts.query_num:
     query_list += local_clean_query
@@ -350,6 +357,10 @@ def run_spark_benchmark(opts):
 
   print "\nQuery:"
   print query_list.replace(';', ";\n")
+
+  if opts.clear_buffer_cache:
+    print "Writing command to clear buffer cache"
+    query_file.write("ephemeral-hdfs/sbin/slaves.sh /root/spark-ec2/clear-cache.sh\n")
 
   query_file.write(
     "%s %s > %s 2>&1\n" % (runner, " ".join("-e '%s'" % q.strip() for q in query_list.split(";") if q.strip()), remote_tmp_file))

@@ -205,23 +205,23 @@ def prepare_spark_dataset(opts):
       pass # Folder may already exist
 
     add_aws_credentials(opts.spark_host, "root", opts.spark_identity_file,
-        "/root/ephemeral-hdfs/conf/core-site.xml", opts.aws_key_id, opts.aws_key)
+        "/root/mapreduce/conf/core-site.xml", opts.aws_key_id, opts.aws_key)
 
-    ssh_spark("/root/ephemeral-hdfs/bin/start-mapred.sh")
+    ssh_spark("/root/mapreduce/bin/start-mapred.sh")
 
     ssh_spark(
-      "/root/ephemeral-hdfs/bin/hadoop distcp " \
+      "/root/mapreduce/bin/hadoop distcp " \
       "s3n://big-data-benchmark/pavlo/%s/%s/rankings/ " \
       "/user/spark/benchmark/rankings/" % (opts.file_format, opts.data_prefix))
 
     ssh_spark(
-      "/root/ephemeral-hdfs/bin/hadoop distcp " \
+      "/root/mapreduce/bin/hadoop distcp " \
       "s3n://big-data-benchmark/pavlo/%s/%s/uservisits/ " \
       "/user/spark/benchmark/uservisits/" % (
         opts.file_format, opts.data_prefix))
 
     ssh_spark(
-      "/root/ephemeral-hdfs/bin/hadoop distcp " \
+      "/root/mapreduce/bin/hadoop distcp " \
       "s3n://big-data-benchmark/pavlo/%s/%s/crawl/ " \
       "/user/spark/benchmark/crawl/" % (opts.file_format, opts.data_prefix))
 
