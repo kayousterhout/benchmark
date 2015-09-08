@@ -253,6 +253,7 @@ def prepare_spark_dataset(opts):
       "/root/url_count.py")
   ssh_spark("/root/spark-ec2/copy-dir /root/url_count.py")
 
+  ssh_spark("/root/spark/sbin/stop-thriftserver.sh")
   ssh_spark("/root/spark/sbin/start-thriftserver.sh --executor-memory %s" % opts.executor_memory)
 
   #TODO: Should keep checking to see if the JDBC server has started yet
