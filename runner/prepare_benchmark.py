@@ -38,6 +38,15 @@ SCALE_FACTOR_MAP = {
   10: "10nodes"
 }
 
+# Maps the file format strings used in the "--file-format" command line parameter to the HiveQL
+# parameters that should be used in the CREATE TABLE commands.
+FILE_FORMAT_TO_HIVEQL_FORMAT = {
+  "sequence": "SEQUENCEFILE",
+  "sequence-snappy": "SEQUENCEFILE",
+  "text": "TEXTFILE",
+  "text-deflate": "TEXTFILE"
+}
+
 ### Runner ###
 def parse_args():
   parser = OptionParser(usage="prepare_benchmark.py [options]")
@@ -263,11 +272,12 @@ def prepare_spark_dataset(opts):
   def beeline(query):
     ssh_spark("/root/spark/bin/beeline -u jdbc:hive2://localhost:10000 -n root -e \"%s\"" % query)
 
+  file_format = FILE_FORMAT_TO_HIVEQL_FORMAT[opts.file_format]
   beeline("DROP TABLE IF EXISTS rankings")
   beeline(
     "CREATE EXTERNAL TABLE rankings (pageURL STRING, pageRank INT, " \
     "avgDuration INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\",\\\" " \
-    "STORED AS TEXTFILE LOCATION \\\"/user/spark/benchmark/rankings\\\";")
+    "STORED AS %s LOCATION \\\"/user/spark/benchmark/rankings\\\";" % file_format)
 
   beeline("DROP TABLE IF EXISTS uservisits;")
   beeline(
@@ -275,12 +285,12 @@ def prepare_spark_dataset(opts):
     "visitDate STRING,adRevenue DOUBLE,userAgent STRING,countryCode STRING," \
     "languageCode STRING,searchWord STRING,duration INT ) " \
     "ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\",\\\" " \
-    "STORED AS TEXTFILE LOCATION \\\"/user/spark/benchmark/uservisits\\\";")
+    "STORED AS %s LOCATION \\\"/user/spark/benchmark/uservisits\\\";" % file_format)
 
   beeline("DROP TABLE IF EXISTS documents;")
   beeline(
-    "CREATE EXTERNAL TABLE documents (line STRING) STORED AS TEXTFILE " \
-    "LOCATION \\\"/user/spark/benchmark/crawl\\\";")
+    "CREATE EXTERNAL TABLE documents (line STRING) STORED AS %s " \
+    "LOCATION \\\"/user/spark/benchmark/crawl\\\";" % file_format)
 
   if opts.parquet:
     ssh_spark("/root/spark/sbin/stop-thriftserver.sh")
@@ -385,17 +395,18 @@ def prepare_shark_dataset(opts):
       "/root/url_count.py")
   ssh_shark("/root/spark-ec2/copy-dir /root/url_count.py")
 
+  file_format = FILE_FORMAT_TO_HIVEQL_FORMAT[opts.file_format]
   ssh_shark(
     "/root/shark/bin/shark -e \"DROP TABLE IF EXISTS rankings; " \
     "CREATE EXTERNAL TABLE rankings (pageURL STRING, pageRank INT, " \
     "avgDuration INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\",\\\" " \
-    "STORED AS TEXTFILE LOCATION \\\"/user/shark/benchmark/rankings\\\";\"")
+    "STORED AS %s LOCATION \\\"/user/shark/benchmark/rankings\\\";\"" % file_format)
 
   ssh_shark(
     "/root/shark/bin/shark -e \"DROP TABLE IF EXISTS scratch; " \
     "CREATE EXTERNAL TABLE scratch (pageURL STRING, pageRank INT, " \
     "avgDuration INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\",\\\" " \
-    "STORED AS TEXTFILE LOCATION \\\"/user/shark/benchmark/scratch\\\";\"")
+    "STORED AS %s LOCATION \\\"/user/shark/benchmark/scratch\\\";\"" % file_format)
 
   ssh_shark(
     "/root/shark/bin/shark -e \"DROP TABLE IF EXISTS uservisits; " \
@@ -403,11 +414,11 @@ def prepare_shark_dataset(opts):
     "visitDate STRING,adRevenue DOUBLE,userAgent STRING,countryCode STRING," \
     "languageCode STRING,searchWord STRING,duration INT ) " \
     "ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\",\\\" " \
-    "STORED AS TEXTFILE LOCATION \\\"/user/shark/benchmark/uservisits\\\";\"")
+    "STORED AS %s LOCATION \\\"/user/shark/benchmark/uservisits\\\";\"" % file_format)
 
   ssh_shark("/root/shark/bin/shark -e \"DROP TABLE IF EXISTS documents; " \
-    "CREATE EXTERNAL TABLE documents (line STRING) STORED AS TEXTFILE " \
-    "LOCATION \\\"/user/shark/benchmark/crawl\\\";\"")
+    "CREATE EXTERNAL TABLE documents (line STRING) STORED AS %s " \
+    "LOCATION \\\"/user/shark/benchmark/crawl\\\";\"" % file_format)
 
   print "=== FINISHED CREATING BENCHMARK DATA ==="
 
@@ -441,12 +452,13 @@ def prepare_impala_dataset(opts):
       "/tmp/benchmark/scratch/" % (opts.file_format, opts.data_prefix))
 
   print "=== CREATING HIVE TABLES FOR BENCHMARK ==="
+  file_format = FILE_FORMAT_TO_HIVEQL_FORMAT[opts.file_format]
   ssh_impala(
     "hive -e \"DROP TABLE IF EXISTS rankings; " \
     "CREATE EXTERNAL TABLE rankings (pageURL STRING, " \
     "pageRank INT, avgDuration INT) ROW FORMAT DELIMITED FIELDS " \
     "TERMINATED BY \\\"\\001\\\" " \
-    "STORED AS SEQUENCEFILE LOCATION \\\"/tmp/benchmark/rankings\\\";\"")
+    "STORED AS %s LOCATION \\\"/tmp/benchmark/rankings\\\";\"" % file_format)
 
   ssh_impala(
     "hive -e \"DROP TABLE IF EXISTS uservisits; " \
@@ -454,15 +466,15 @@ def prepare_impala_dataset(opts):
     "destURL STRING," \
     "visitDate STRING,adRevenue DOUBLE,userAgent STRING,countryCode STRING," \
     "languageCode STRING,searchWord STRING,duration INT ) " \
-    "ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\"\\001\\\" " +\
-    "STORED AS SEQUENCEFILE LOCATION \\\"/tmp/benchmark/uservisits\\\";\"")
+    "ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\"\\001\\\" " \
+    "STORED AS %s LOCATION \\\"/tmp/benchmark/uservisits\\\";\"" % file_format)
 
   ssh_impala(
     "hive -e \"DROP TABLE IF EXISTS scratch; " \
     "CREATE EXTERNAL TABLE scratch (pageURL STRING, " \
     "pageRank INT, avgDuration INT) ROW FORMAT DELIMITED FIELDS " \
     "TERMINATED BY \\\"\\001\\\" " \
-    "STORED AS SEQUENCEFILE LOCATION \\\"/tmp/benchmark/scratch\\\";\"")
+    "STORED AS %s LOCATION \\\"/tmp/benchmark/scratch\\\";\"" % file_format)
 
   print "=== FINISHED CREATING BENCHMARK DATA ==="
 
@@ -512,13 +524,14 @@ def prepare_hive_dataset(opts):
   ssh_hive(mkdir, user='hdfs')
   ssh_hive(cp_scratch, user='hdfs')
 
+  file_format = FILE_FORMAT_TO_HIVEQL_FORMAT[opts.file_format]
   ssh_hive(
     "hive -e \"DROP TABLE IF EXISTS rankings; " \
     "CREATE EXTERNAL TABLE rankings (pageURL STRING, " \
     "pageRank INT, avgDuration INT) ROW FORMAT DELIMITED FIELDS " \
     "TERMINATED BY \\\"\\001\\\" " \
-    "STORED AS SEQUENCEFILE LOCATION \\\"/tmp/benchmark/rankings\\\";\"",
-  user="hdfs")
+    "STORED AS %s LOCATION \\\"/tmp/benchmark/rankings\\\";\"" % file_format,
+    user="hdfs")
 
   # text file version for the above, for testing
   # ssh_hive(
@@ -535,23 +548,23 @@ def prepare_hive_dataset(opts):
     "destURL STRING," \
     "visitDate STRING,adRevenue DOUBLE,userAgent STRING,countryCode STRING," \
     "languageCode STRING,searchWord STRING,duration INT ) " \
-    "ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\"\\001\\\" " +\
-    "STORED AS SEQUENCEFILE LOCATION \\\"/tmp/benchmark/uservisits\\\";\"",
-  user="hdfs")
+    "ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\"\\001\\\" " \
+    "STORED AS %s LOCATION \\\"/tmp/benchmark/uservisits\\\";\"" % file_format,
+    user="hdfs")
 
   ssh_hive(
     "hive -e \"DROP TABLE IF EXISTS documents; " \
-    "CREATE EXTERNAL TABLE documents (line STRING) STORED AS TEXTFILE " \
-    "LOCATION \\\"/tmp/benchmark/crawl\\\";\"",
-  user="hdfs")
+    "CREATE EXTERNAL TABLE documents (line STRING) STORED AS %s " \
+    "LOCATION \\\"/tmp/benchmark/crawl\\\";\"" % file_format,
+    user="hdfs")
 
   ssh_hive(
     "hive -e \"DROP TABLE IF EXISTS scratch; " \
     "CREATE EXTERNAL TABLE scratch (pageURL STRING, " \
     "pageRank INT, avgDuration INT) ROW FORMAT DELIMITED FIELDS " \
     "TERMINATED BY \\\"\\001\\\" " \
-    "STORED AS SEQUENCEFILE LOCATION \\\"/tmp/benchmark/scratch\\\";\"",
-  user="hdfs")
+    "STORED AS %s LOCATION \\\"/tmp/benchmark/scratch\\\";\"" % file_format,
+    user="hdfs")
 
   print "=== FINISHED CREATING BENCHMARK DATA ==="
 
@@ -612,12 +625,13 @@ def prepare_hive_cdh_dataset(opts):
   ssh_hive(mkdir)
   ssh_hive(cp_scratch)
 
+  file_format = FILE_FORMAT_TO_HIVEQL_FORMAT[opts.file_format]
   ssh_hive(
     "hive -e \"DROP TABLE IF EXISTS rankings; " \
     "CREATE EXTERNAL TABLE rankings (pageURL STRING, " \
     "pageRank INT, avgDuration INT) ROW FORMAT DELIMITED FIELDS " \
     "TERMINATED BY \\\"\\001\\\" " \
-    "STORED AS SEQUENCEFILE LOCATION \\\"/tmp/benchmark/rankings\\\";\"")
+    "STORED AS %s LOCATION \\\"/tmp/benchmark/rankings\\\";\"" % file_format)
 
   ssh_hive(
     "hive -e \"DROP TABLE IF EXISTS uservisits; " \
@@ -625,20 +639,20 @@ def prepare_hive_cdh_dataset(opts):
     "destURL STRING," \
     "visitDate STRING,adRevenue DOUBLE,userAgent STRING,countryCode STRING," \
     "languageCode STRING,searchWord STRING,duration INT ) " \
-    "ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\"\\001\\\" " +\
-    "STORED AS SEQUENCEFILE LOCATION \\\"/tmp/benchmark/uservisits\\\";\"")
+    "ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\"\\001\\\" " \
+    "STORED AS %s LOCATION \\\"/tmp/benchmark/uservisits\\\";\"" % file_format)
 
   ssh_hive(
     "hive -e \"DROP TABLE IF EXISTS documents; " \
-    "CREATE EXTERNAL TABLE documents (line STRING) STORED AS TEXTFILE " \
-    "LOCATION \\\"/tmp/benchmark/crawl\\\";\"")
+    "CREATE EXTERNAL TABLE documents (line STRING) STORED AS %s " \
+    "LOCATION \\\"/tmp/benchmark/crawl\\\";\"" % file_format)
 
   ssh_hive(
     "hive -e \"DROP TABLE IF EXISTS scratch; " \
     "CREATE EXTERNAL TABLE scratch (pageURL STRING, " \
     "pageRank INT, avgDuration INT) ROW FORMAT DELIMITED FIELDS " \
     "TERMINATED BY \\\"\\001\\\" " \
-    "STORED AS SEQUENCEFILE LOCATION \\\"/tmp/benchmark/scratch\\\";\"")
+    "STORED AS %s LOCATION \\\"/tmp/benchmark/scratch\\\";\"" % file_format)
 
   print "=== FINISHED CREATING BENCHMARK DATA ==="
 
