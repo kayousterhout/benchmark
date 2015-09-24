@@ -196,6 +196,8 @@ def parse_args():
       help="Number of reduce tasks in Shark & Spark SQL")
   parser.add_option("-z", "--clear-buffer-cache", action="store_true",
       default=False, help="Clear disk buffer cache between query runs")
+  parser.add_option("--compress", action="store_true",
+      default=False, help="Whether to compress output tables")
 
   parser.add_option("-a", "--impala-hosts",
       help="Hostnames of Impala nodes (comma seperated)")
@@ -320,9 +322,10 @@ def run_spark_benchmark(opts):
   # Two modes here: Spark SQL Mem and Spark SQL Disk. If using Spark SQL disk use
   # uncached tables. If using Spark SQL Mem, used cached tables.
 
-  query_list = "set spark.sql.codegen=true; set spark.sql.shuffle.partitions = %s;" % opts.reduce_tasks
-  # Comment out for uncompressed output.
-  query_list += "SET hive.exec.compress.output=True;SET io.seqfile.compression.type=BLOCK;"
+  query_list = "set spark.sql.codegen=true;set spark.sql.shuffle.partitions=%s;" % opts.reduce_tasks
+  if (opts.compress):
+    print "Will compress output tables."
+    query_list += "set hive.exec.compress.output=true;set io.seqfile.compression.type=BLOCK;"
 
   # Create cached queries for Spark SQL Mem
   if not opts.spark_no_cache:
@@ -924,7 +927,7 @@ def main():
   if opts.spark:
     results, contents = run_spark_benchmark(opts)
   if opts.shark:
-    results, contents = run_shark_benchmark(opts)    
+    results, contents = run_shark_benchmark(opts)
   if opts.redshift:
     results = run_redshift_benchmark(opts)
   if opts.hive:
