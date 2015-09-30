@@ -111,6 +111,9 @@ def parse_args():
       help="Assumes s3 data is already loaded")
   parser.add_option("--parquet", action="store_true", default=False,
       help="Convert benchmark data to parquet")
+  parser.add_option("--skip-parquet-conversion", action="store_true", default=False,
+      help="Assumes that the costly parquet conversion has already been done. This only makes \
+      sense if the \"--parquet\" option is also specified.")
 
   (opts, args) = parser.parse_args()
 
@@ -155,6 +158,11 @@ def parse_args():
                         opts.aws_key is None):
     print >> stderr, \
         "Redshift requires host, username, password, db, and AWS credentials"
+    sys.exit(1)
+
+  if opts.skip_parquet_conversion and not opts.parquet:
+    print >> stderr, \
+        "\"--skip-parquet-conversion\" only makes sense if \"--parquet\" is also specified"
     sys.exit(1)
 
   return opts
@@ -293,19 +301,25 @@ def prepare_spark_dataset(opts):
     "LOCATION \\\"/user/spark/benchmark/crawl\\\";" % file_format)
 
   if opts.parquet:
-    ssh_spark("/root/spark/sbin/stop-thriftserver.sh")
+    if (not opts.skip_parquet_conversion):
+      print "Converting benchmark data to parquet"
+      ssh_spark("/root/spark/sbin/stop-thriftserver.sh")
+      print "Sleeping for 30 seconds so the jdbc server can stop"
+      time.sleep(30)
 
-    print "Sleeping for 30 seconds so the jdbc server can stop"
-    time.sleep(30)
+      scp_to(
+        opts.spark_host, opts.spark_identity_file,
+        "root",
+        "parquet/convert_to_parquet.py",
+        "/root/convert_to_parquet.py")
+      ssh_spark(
+        "/root/spark/bin/spark-submit --master spark://%s:7077 /root/convert_to_parquet.py" %
+        opts.spark_host)
 
-    scp_to(opts.spark_host, opts.spark_identity_file, "root", "parquet/convert_to_parquet.py",
-      "/root/convert_to_parquet.py")
-    ssh_spark("/root/spark/bin/spark-submit --master spark://%s:7077 /root/convert_to_parquet.py" % opts.spark_host)
-
-    ssh_spark("/root/spark/sbin/start-thriftserver.sh --executor-memory %s" % opts.executor_memory)
-
-    print "Sleeping for 30 seconds so the jdbc server can start"
-    time.sleep(30)
+      ssh_spark(
+        "/root/spark/sbin/start-thriftserver.sh --executor-memory %s" % opts.executor_memory)
+      print "Sleeping for 30 seconds so the jdbc server can start"
+      time.sleep(30)
 
     beeline("DROP TABLE IF EXISTS rankings")
     beeline(
