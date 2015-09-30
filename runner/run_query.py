@@ -363,7 +363,7 @@ def run_spark_benchmark(opts):
 
   if opts.clear_buffer_cache:
     print "Writing command to clear buffer cache"
-    query_file.write("ephemeral-hdfs/sbin/slaves.sh /root/spark-ec2/clear-cache.sh\n")
+    query_file.write("/root/ephemeral-hdfs/sbin/slaves.sh /root/spark-ec2/clear-cache.sh\n")
 
   query_file.write(
     "%s %s > %s 2>&1\n" % (runner, " ".join("-e '%s'" % q.strip() for q in query_list.split(";") if q.strip()), remote_tmp_file))
