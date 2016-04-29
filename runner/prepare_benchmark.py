@@ -280,25 +280,33 @@ def prepare_spark_dataset(opts):
   def beeline(query):
     ssh_spark("/root/spark/bin/beeline -u jdbc:hive2://localhost:10000 -n root -e \"%s\"" % query)
 
-  file_format = FILE_FORMAT_TO_HIVEQL_FORMAT[opts.file_format]
+  file_format = opts.file_format
+  hiveql_format = FILE_FORMAT_TO_HIVEQL_FORMAT[file_format]
+  if file_format == "sequence-snappy":
+    # If the file format is compressed sequence files, then we use the default delimiter.
+    row_format = ""
+  else:
+    # Use a comma as the delimiter for formats other than compressed sequence files.
+    row_format = " ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\",\\\" "
+
   beeline("DROP TABLE IF EXISTS rankings")
   beeline(
-    "CREATE EXTERNAL TABLE rankings (pageURL STRING, pageRank INT, " \
-    "avgDuration INT) ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\",\\\" " \
-    "STORED AS %s LOCATION \\\"/user/spark/benchmark/rankings\\\";" % file_format)
+    "CREATE EXTERNAL TABLE rankings (pageURL STRING, pageRank INT, avgDuration INT) " +
+    row_format +
+    "STORED AS %s LOCATION \\\"/user/spark/benchmark/rankings\\\";" % hiveql_format)
 
   beeline("DROP TABLE IF EXISTS uservisits;")
   beeline(
-    "CREATE EXTERNAL TABLE uservisits (sourceIP STRING,destURL STRING," \
-    "visitDate STRING,adRevenue DOUBLE,userAgent STRING,countryCode STRING," \
-    "languageCode STRING,searchWord STRING,duration INT ) " \
-    "ROW FORMAT DELIMITED FIELDS TERMINATED BY \\\",\\\" " \
-    "STORED AS %s LOCATION \\\"/user/spark/benchmark/uservisits\\\";" % file_format)
+    "CREATE EXTERNAL TABLE uservisits (sourceIP STRING,destURL STRING," +
+    "visitDate STRING,adRevenue DOUBLE,userAgent STRING,countryCode STRING," +
+    "languageCode STRING,searchWord STRING,duration INT )" +
+    row_format +
+    "STORED AS %s LOCATION \\\"/user/spark/benchmark/uservisits\\\";" % hiveql_format)
 
   beeline("DROP TABLE IF EXISTS documents;")
   beeline(
     "CREATE EXTERNAL TABLE documents (line STRING) STORED AS %s " \
-    "LOCATION \\\"/user/spark/benchmark/crawl\\\";" % file_format)
+    "LOCATION \\\"/user/spark/benchmark/crawl\\\";" % hiveql_format)
 
   if opts.parquet:
     if (not opts.skip_parquet_conversion):
