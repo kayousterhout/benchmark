@@ -99,8 +99,6 @@ def parse_args():
   parser.add_option("-f", "--file-format", default="sequence-snappy",
       help="File format to copy (text, text-deflate, "\
            "sequence, or sequence-snappy)")
-  parser.add_option("--executor-memory", type="string", default="24G",
-      help="How much executor memory spark sql nodes should use")
 
   parser.add_option("-d", "--aws-key-id",
       help="Access key ID for AWS")
@@ -271,7 +269,7 @@ def prepare_spark_dataset(opts):
   ssh_spark("/root/spark-ec2/copy-dir /root/url_count.py")
 
   ssh_spark("/root/spark/sbin/stop-thriftserver.sh")
-  ssh_spark("/root/spark/sbin/start-thriftserver.sh --executor-memory %s" % opts.executor_memory)
+  ssh_spark("/root/spark/sbin/start-thriftserver.sh")
 
   #TODO: Should keep checking to see if the JDBC server has started yet
   print "Sleeping for 30 seconds so the jdbc server can start"
@@ -324,8 +322,7 @@ def prepare_spark_dataset(opts):
         "/root/spark/bin/spark-submit --master spark://%s:7077 /root/convert_to_parquet.py" %
         opts.spark_host)
 
-      ssh_spark(
-        "/root/spark/sbin/start-thriftserver.sh --executor-memory %s" % opts.executor_memory)
+      ssh_spark("/root/spark/sbin/start-thriftserver.sh")
       print "Sleeping for 30 seconds so the jdbc server can start"
       time.sleep(30)
 
