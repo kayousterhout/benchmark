@@ -15,4 +15,4 @@
 # limitations under the License.
 
 cd "`dirname $0`"
-PYTHONPATH="./deps/:$PYTHONPATH" python ./prepare_benchmark.py $@
+PYTHONPATH="./deps/:$PYTHONPATH" python27 ./prepare_benchmark.py $@

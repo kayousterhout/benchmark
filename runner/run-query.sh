@@ -15,4 +15,4 @@
 # limitations under the License.
 
 cd "`dirname $0`"
-PYTHONPATH="./deps/:$PYTHONPATH" python ./run_query.py $@
+PYTHONPATH="./deps/:$PYTHONPATH" python27 ./run_query.py $@
