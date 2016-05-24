@@ -327,27 +327,6 @@ def run_spark_benchmark(opts):
     print "Will compress output tables."
     query_list += "set hive.exec.compress.output=true;set io.seqfile.compression.type=BLOCK;"
 
-  # Create cached queries for Spark SQL Mem
-  if not opts.spark_no_cache:
-
-    # Set up cached tables
-    if False:
-# skip for now!! Done manually.
-      if '4' in opts.query_num:
-        # Query 4 uses entirely different tables
-        query_list += """
-                      CACHE TABLE documents;
-                      """
-      else:
-        query_list += """
-                      CACHE TABLE rankings;
-                      """
-        if '1' not in opts.query_num:
-          # For query 1, only need the rankings table.
-          query_list += """
-                        CACHE TABLE uservisits;
-                        """
-
   if '4' not in opts.query_num:
     query_list += local_clean_query
   query_list += local_query_map[opts.query_num][0]
