@@ -186,8 +186,8 @@ def parse_args():
   parser.add_option("--hive-cdh", action="store_true", default=False,
       help="Hive on CDH cluster")
 
-  parser.add_option("-g", "--spark-no-cache", action="store_true",
-      default=False, help="Disable caching in Spark SQL")
+  parser.add_option("-g", "--spark-cache-output-tables", action="store_true",
+      default=False, help="For Spark SQL, cache the output tables in memory.")
   parser.add_option("--shark-no-cache", action="store_true",
       default=False, help="Disable caching in Shark")
   parser.add_option("--impala-use-hive", action="store_true",
@@ -352,8 +352,8 @@ def run_spark_benchmark(opts):
     query_list += local_clean_query
   query_list += local_query_map[opts.query_num][0]
 
-  # Store the result only in mem
-  if not opts.spark_no_cache:
+  # Cache the result table in memory.
+  if opts.spark_cache_output_tables:
     query_list = query_list.replace("CREATE TABLE", "CACHE TABLE")
 
   query_list = re.sub("\s\s+", " ", query_list.replace('\n', ' '))
@@ -941,10 +941,10 @@ def main():
     else:
       fname = "impala_mem"
   elif opts.spark:
-    if opts.spark_no_cache:
-      fname = "spark_disk"
-    else:
+    if opts.spark_cache_output_tables:
       fname = "spark_mem"
+    else:
+      fname = "spark_disk"
   elif opts.shark:
     if opts.shark_no_cache:
       fname = "shark_disk"
